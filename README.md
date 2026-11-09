@@ -56,3 +56,7 @@ There are 2 ways to use this project:
 | Intelligent Route planning | ❌ | Route planning using AI technology to match your preferences |
 | POI Search | ❌ | To provide an even more modern map search engine that uses AI to rank results |
 | Local AI model | ❌ | This feature is difficult to implement and should not be expected to come soon |
+
+> [!NOTE]
+> Copyright 2026 PeterMaZep
+> Distributed under the Apache 2.0 License. See LICENSE for more information.
