@@ -1,3 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">PMap</string>
+
+    <string name="byok_title">Mapbox API Key Required</string>
+    <string name="byok_description">Please enter your Mapbox public access token</string>
+    <string name="byok_hint">pk.abcdefg123456</string>
+    <string name="byok_button">Save</string>
+
+    <string name="nav_explore">Explore</string>
+    <string name="nav_assistant">Assistant</string>
+    <string name="nav_you">You</string>
 </resources>

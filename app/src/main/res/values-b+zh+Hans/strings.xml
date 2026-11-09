@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">派德地图</string>
+
+    <string name="byok_title">需要 Mapbox API 密钥</string>
+    <string name="byok_description">请输入您的 Mapbox 公共访问令牌。</string>
+    <string name="byok_hint">pk.abcdefg123456</string>
+    <string name="byok_button">保存</string>
+
+    <string name="nav_explore">探索</string>
+    <string name="nav_assistant">AI助手</string>
+    <string name="nav_you">我的</string>
+</resources>

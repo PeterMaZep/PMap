@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,9 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.BottomSheetScaffold
+import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,12 +47,17 @@ import com.mapbox.maps.plugin.attribution.Attribution
 import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.maps.plugin.scalebar.ScaleBar
+import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import net.pwindows.pmap.ui.components.BottomNavigationBar
+import net.pwindows.pmap.ui.components.NavTab
+import net.pwindows.pmap.ui.components.BottomSheet
+import net.pwindows.pmap.ui.theme.PMapTheme
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -97,6 +106,7 @@ class MainActivity : ComponentActivity() {
     lateinit var permissionsManager: PermissionsManager
 
     @SuppressLint("LocalContextResourcesRead")
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -105,136 +115,182 @@ class MainActivity : ComponentActivity() {
             val context: Context = LocalContext.current
             val prefs = remember { context.getSharedPreferences("pmap_prefs", Context.MODE_PRIVATE) }
 
-            val xmlTokenId = remember { context.resources.getIdentifier("mapbox_access_token", "string", context.packageName) }
-            val xmlToken = remember { if (xmlTokenId != 0) context.resources.getString(xmlTokenId) else null }
-            val hasXmlToken = remember { !xmlToken.isNullOrBlank() && !xmlToken.contains("YOUR_MAPBOX") }
-
-            val tokenState = remember {
-                mutableStateOf<String?>(BuildConfig.MAPBOX_KEY.ifBlank {
-                    prefs.getString("mapbox_token", null) ?: if (hasXmlToken) xmlToken else null
-                })
+            var currentTheme by remember {
+                val savedThemeString = prefs.getString("app_theme", PMapTheme.YELLOW.name)
+                mutableStateOf(
+                    try {
+                        PMapTheme.valueOf(savedThemeString ?: PMapTheme.YELLOW.name)
+                    } catch (e: Exception) {
+                        PMapTheme.YELLOW
+                    }
+                )
             }
 
-            if (tokenState.value.isNullOrBlank()) {
-                KeySetupScreen(onSave = { enteredKey ->
-                    prefs.edit().putString("mapbox_token", enteredKey).apply()
-                    MapboxOptions.accessToken = enteredKey
-                    tokenState.value = enteredKey
-                })
-            } else {
-                tokenState.value?.let { safeToken ->
-                    LaunchedEffect(safeToken) { MapboxOptions.accessToken = safeToken }
+            PMapTheme(theme = currentTheme) {
+                val xmlTokenId = remember { context.resources.getIdentifier("mapbox_access_token", "string", context.packageName) }
+                val xmlToken = remember { if (xmlTokenId != 0) context.resources.getString(xmlTokenId) else null }
+                val hasXmlToken = remember { !xmlToken.isNullOrBlank() && !xmlToken.contains("YOUR_MAPBOX") }
+
+                var tokenState by remember {
+                    mutableStateOf<String?>(
+                        BuildConfig.MAPBOX_KEY.ifBlank {
+                            prefs.getString("mapbox_token", null) ?: if (hasXmlToken) xmlToken else null
+                        }
+                    )
                 }
 
-                var currentPreset by remember { mutableStateOf(LightPresetValue.DAY) }
-
-                val styleConfigState = remember {
-                    StandardStyleConfigurationState().apply {
-                        lightPreset = currentPreset
-                    }
-                }
-
-                val mapViewportState = rememberMapViewportState {
-                    setCameraOptions {
-                        zoom(15.0)
-                        center(Point.fromLngLat(101.6869, 3.1390))
-                        bearing(0.0)
-                        pitch(45.0)
-                    }
-                }
-
-                var lastFetchTimezone by remember { mutableStateOf<Int?>(null) }
-                var lastFetchTime by remember { mutableStateOf(0L) }
-
-                fun shouldFetch(timezoneOffset: Int): Boolean =
-                    if (lastFetchTimezone == null) true
-                    else {
-                        val now = System.currentTimeMillis()
-                        (now - lastFetchTime > 5 * 60 * 1000L) || (lastFetchTimezone != timezoneOffset)
+                if (tokenState.isNullOrBlank()) {
+                    KeySetupScreen(onSave = { enteredKey ->
+                        prefs.edit().putString("mapbox_token", enteredKey).apply()
+                        MapboxOptions.accessToken = enteredKey
+                        tokenState = enteredKey
+                    })
+                } else {
+                    tokenState?.let { safeToken ->
+                        LaunchedEffect(safeToken) { MapboxOptions.accessToken = safeToken }
                     }
 
-                suspend fun updateLighting(lat: Double, lng: Double, force: Boolean = false) {
-                    val timezoneOffset = (lng / 15.0).roundToInt()
-                    if (force || shouldFetch(timezoneOffset)) {
-                        val weather = fetchWeatherData(lat, lng)
-                        if (weather != null) {
-                            lastFetchTimezone = timezoneOffset
-                            lastFetchTime = System.currentTimeMillis()
+                    var currentPreset by remember { mutableStateOf(LightPresetValue.DAY) }
+                    var selectedTab by remember { mutableStateOf(NavTab.EXPLORE) }
 
-                            val now = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
-                            val timeFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-
-                            try {
-                                val sunriseTime = timeFormat.parse(weather.sunrise)
-                                val sunsetTime = timeFormat.parse(weather.sunset)
-
-                                if (sunriseTime != null && sunsetTime != null) {
-                                    val nowMs = now.timeInMillis
-                                    val sunriseMs = sunriseTime.time
-                                    val sunsetMs = sunsetTime.time
-
-                                    val dawnStartMs = sunriseMs - (60 * 60 * 1000)
-                                    val duskStartMs = sunsetMs - (30 * 60 * 1000)
-                                    val duskEndMs = sunsetMs + (60 * 60 * 1000)
-
-                                    val newPreset = when {
-                                        nowMs < dawnStartMs || nowMs > duskEndMs -> LightPresetValue.NIGHT
-                                        nowMs < sunriseMs -> LightPresetValue.DAWN
-                                        nowMs < duskStartMs -> LightPresetValue.DAY
-                                        else -> LightPresetValue.DUSK
-                                    }
-                                    if (currentPreset != newPreset) {
-                                        currentPreset = newPreset
-                                        styleConfigState.lightPreset = newPreset
-                                    }
-                                }
-                            } catch (e: Exception) {}
+                    val styleConfigState = remember {
+                        StandardStyleConfigurationState().apply {
+                            lightPreset = currentPreset
                         }
                     }
-                }
 
-                LaunchedEffect(Unit) {
-                    delay(1000L)
-                    mapViewportState.cameraState?.center?.let { updateLighting(it.latitude(), it.longitude(), true) }
-                }
-
-                LaunchedEffect(mapViewportState) {
-                    snapshotFlow {
-                        val center = mapViewportState.cameraState?.center
-                        if (center != null) Pair(center.latitude(), center.longitude()) else null
-                    }.debounce(1000L).collectLatest { location ->
-                        if (location != null) updateLighting(location.first, location.second, false)
+                    val mapViewportState = rememberMapViewportState {
+                        setCameraOptions {
+                            zoom(15.0)
+                            center(Point.fromLngLat(101.6869, 3.1390))
+                            bearing(0.0)
+                            pitch(45.0)
+                        }
                     }
-                }
 
-                LaunchedEffect(Unit) {
-                    while (true) {
-                        delay(5 * 60 * 1000L)
+                    var lastFetchTimezone by remember { mutableStateOf<Int?>(null) }
+                    var lastFetchTime by remember { mutableStateOf(0L) }
+
+                    fun shouldFetch(timezoneOffset: Int): Boolean =
+                        if (lastFetchTimezone == null) true
+                        else {
+                            val now = System.currentTimeMillis()
+                            (now - lastFetchTime > 5 * 60 * 1000L) || (lastFetchTimezone != timezoneOffset)
+                        }
+
+                    suspend fun updateLighting(lat: Double, lng: Double, force: Boolean = false) {
+                        val timezoneOffset = (lng / 15.0).roundToInt()
+                        if (force || shouldFetch(timezoneOffset)) {
+                            val weather = fetchWeatherData(lat, lng)
+                            if (weather != null) {
+                                lastFetchTimezone = timezoneOffset
+                                lastFetchTime = System.currentTimeMillis()
+
+                                val now = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
+                                val timeFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+
+                                try {
+                                    val sunriseTime = timeFormat.parse(weather.sunrise)
+                                    val sunsetTime = timeFormat.parse(weather.sunset)
+
+                                    if (sunriseTime != null && sunsetTime != null) {
+                                        val nowMs = now.timeInMillis
+                                        val sunriseMs = sunriseTime.time
+                                        val sunsetMs = sunsetTime.time
+
+                                        val dawnStartMs = sunriseMs - (60 * 60 * 1000)
+                                        val duskStartMs = sunsetMs - (30 * 60 * 1000)
+                                        val duskEndMs = sunsetMs + (60 * 60 * 1000)
+
+                                        val newPreset = when {
+                                            nowMs < dawnStartMs || nowMs > duskEndMs -> LightPresetValue.NIGHT
+                                            nowMs < sunriseMs -> LightPresetValue.DAWN
+                                            nowMs < duskStartMs -> LightPresetValue.DAY
+                                            else -> LightPresetValue.DUSK
+                                        }
+                                        if (currentPreset != newPreset) {
+                                            currentPreset = newPreset
+                                            styleConfigState.lightPreset = newPreset
+                                        }
+                                    }
+                                } catch (e: Exception) {}
+                            }
+                        }
+                    }
+
+                    LaunchedEffect(Unit) {
+                        delay(1000L)
                         mapViewportState.cameraState?.center?.let { updateLighting(it.latitude(), it.longitude(), true) }
                     }
-                }
 
-                MapboxMap(
-                    Modifier.fillMaxSize(),
-                    mapViewportState = mapViewportState,
-                    style = { MapboxStandardStyle(standardStyleConfigurationState = styleConfigState) },
-                    scaleBar = { ScaleBar(Modifier.padding(top = 60.dp)) },
-                    logo = { Logo(Modifier.padding(bottom = 40.dp)) },
-                    attribution = { Attribution(Modifier.padding(bottom = 40.dp)) }
-                ) {
-                    MapEffect(Unit) { mapView ->
-                        mapView.location.updateSettings {
-                            locationPuck = createDefault2DPuck(withBearing = true)
-                            enabled = true
-                            puckBearing = PuckBearing.HEADING
-                            pulsingEnabled = true
-                            puckBearingEnabled = true
+                    LaunchedEffect(mapViewportState) {
+                        snapshotFlow {
+                            val center = mapViewportState.cameraState?.center
+                            if (center != null) Pair(center.latitude(), center.longitude()) else null
+                        }.debounce(1000L).collectLatest { location ->
+                            if (location != null) updateLighting(location.first, location.second, false)
                         }
-                        mapViewportState.transitionToFollowPuckState()
                     }
 
-                    MapEffect(currentPreset) { mapView ->
-                        mapView.mapboxMap.setStyleImportConfigProperty("basemap", "lightPreset", currentPreset.value)
+                    LaunchedEffect(Unit) {
+                        while (true) {
+                            delay(5 * 60 * 1000L)
+                            mapViewportState.cameraState?.center?.let { updateLighting(it.latitude(), it.longitude(), true) }
+                        }
+                    }
+
+                    val bottomSheetScaffoldState = rememberBottomSheetScaffoldState()
+
+                    LaunchedEffect(selectedTab) {
+                        bottomSheetScaffoldState.bottomSheetState.expand()
+                    }
+
+                    BottomSheetScaffold(
+                        scaffoldState = bottomSheetScaffoldState,
+                        sheetContent = {
+                            BottomSheet(selectedTab = selectedTab)
+                        },
+                        sheetPeekHeight = 0.dp
+                    ) { innerPadding ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding)
+                        ) {
+                            MapboxMap(
+                                Modifier.fillMaxSize(),
+                                mapViewportState = mapViewportState,
+                                style = { MapboxStandardStyle(standardStyleConfigurationState = styleConfigState) },
+                                scaleBar = { ScaleBar(Modifier.padding(top = 120.dp)) },
+                                logo = { Logo(Modifier.padding(bottom = 100.dp)) },
+                                attribution = { Attribution(Modifier.padding(bottom = 100.dp)) }
+                            ) {
+                                MapEffect(Unit) { mapView ->
+                                    mapView.location.updateSettings {
+                                        locationPuck = createDefault2DPuck(withBearing = true)
+                                        enabled = true
+                                        puckBearing = PuckBearing.HEADING
+                                        pulsingEnabled = true
+                                        puckBearingEnabled = true
+                                    }
+                                    mapViewportState.transitionToFollowPuckState()
+                                }
+
+                                MapEffect(currentPreset) { mapView ->
+                                    mapView.mapboxMap.setStyleImportConfigProperty("basemap", "lightPreset", currentPreset.value)
+                                }
+                            }
+
+                            BottomNavigationBar(
+                                selectedTab = selectedTab,
+                                onTabSelected = { newTab ->
+                                    selectedTab = newTab
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }
@@ -263,23 +319,29 @@ fun KeySetupScreen(onSave: (String) -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = "Mapbox API Key Required", style = MaterialTheme.typography.headlineMedium)
+        Text(
+            text = stringResource(id = R.string.byok_title),
+            style = MaterialTheme.typography.headlineMedium
+        )
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Please enter your Mapbox public access token (starts with pk.).")
+
+        Text(text = stringResource(id = R.string.byok_description))
         Spacer(modifier = Modifier.height(16.dp))
+
         OutlinedTextField(
             value = inputKey,
             onValueChange = { inputKey = it },
-            label = { Text("pk.eyJ1...") },
+            label = { Text(stringResource(id = R.string.byok_hint)) },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(16.dp))
+
         Button(
             onClick = { onSave(inputKey.trim()) },
             modifier = Modifier.fillMaxWidth(),
             enabled = inputKey.startsWith("pk.")
         ) {
-            Text("Save & Load Map")
+            Text(stringResource(id = R.string.byok_button))
         }
     }
 }
