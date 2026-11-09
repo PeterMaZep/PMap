@@ -58,8 +58,10 @@ There are 2 ways to use this project:
 | Local AI model | ❌ | This feature is difficult to implement and should not be expected to come soon |
 
 ## Screenshots
-![Screenshot of map without a bottom sheet](screenshots/map.png)
+![Alt](screenshots/map.png "Screenshot of map without a bottom sheet")
 
+## Repository Activity
+![Alt](https://repobeats.axiom.co/api/embed/21cc283882d63ce821b381ca4638bc7313da5508.svg "Repobeats analytics image")
 
 > [!NOTE]
 > Copyright 2026 PeterMaZep
