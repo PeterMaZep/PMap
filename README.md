@@ -35,12 +35,31 @@ There are 2 ways to use this project:
     * Enter your API keys in the onboarding process
 
 2. **Becoming your own provider** - You can distribute the software to other people who do not want to go through the hassle of making an account on the platforms and getting an API key.
-    * Clone this repository and enter your keys into key.txt in the following format:
-    ```text
-    pk.mapboxKeyHere
-    HEREAccessKeyID, HEREAccessKeySecret
-    ```
-    * Then, build the project and get the APK files. You are free to distribute it as long as:
+    * Clone this repository.
+      ```bash
+       git clone https://github.com/PeterMaZep/PMap.git
+       cd PMap
+      ```
+    * Then, enter your keys into key.txt in the following format:
+      ```text
+       pk.mapboxKeyHere
+       HEREAccessKeyID, HEREAccessKeySecret
+      ```
+    * Then, add your signing keys.
+        * Open local.properties and add your signing details:
+        ```properties
+          RELEASE_STORE_FILE=/path/to/your/keystore.jks
+          RELEASE_STORE_PASSWORD=your_password
+          RELEASE_KEY_ALIAS=your_alias
+          RELEASE_KEY_PASSWORD=your_key_password
+        ```
+    * Finally, build the project.
+        * You can either use Android Studio to build, or you can use the terminal:
+        ```bash
+         ./gradlew assembleRelease
+        ```
+        * The resulting APK will be at `app/build/outputs/apk/release/app-release.apk`
+    * You are free to distribute it as long as:
         - You must include the original copyright notice and comply with the Apache 2.0 License.
         - You are under 5000 MAU(If you are on the free plan)
         - You are paying for the SDK(If you exceed the free plan's limits)
